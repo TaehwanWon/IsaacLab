@@ -1882,3 +1882,40 @@ def generate_random_transformation_matrix(pos_boundary=1, rot_boundary=(2 * math
     T[:3, 3] = translation
 
     return T
+
+
+def transform_to_relative_frame(pos_w: torch.Tensor, quat_w: torch.Tensor,
+                                base_pos_w: torch.Tensor, base_quat_w: torch.Tensor):
+    """
+    Converts a pose from world frame to base (local) frame.
+
+    Args:
+        pos_w: (N, 3) position in world frame
+        quat_w: (N, 4) quaternion in world frame (w, x, y, z)
+        base_pos_w: (N, 3) base position in world frame
+        base_quat_w: (N, 4) base orientation in world frame
+
+    Returns:
+        pos_b: (N, 3) position in base frame
+        quat_b: (N, 4) orientation in base frame
+    """
+    rel_pos = quat_rotate(quat_inverse(base_quat_w), pos_w - base_pos_w)
+    rel_quat = quat_multiply(quat_inverse(base_quat_w), quat_w)
+    return rel_pos, rel_quat
+
+def quat_multiply(q, r):
+    """Multiply two quaternions q * r"""
+    w1, x1, y1, z1 = q.unbind(-1)
+    w2, x2, y2, z2 = r.unbind(-1)
+    return torch.stack((
+        w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        w1*z2 + x1*y2 - y1*x2 + z1*w2,
+    ), dim=-1)
+
+def quat_inverse(q: torch.Tensor) -> torch.Tensor:
+    """Computes the inverse of a quaternion (w, x, y, z)"""
+    w, x, y, z = q.unbind(-1)
+    norm_sq = w**2 + x**2 + y**2 + z**2 + 1e-8  # small epsilon to prevent div by 0
+    return torch.stack((w, -x, -y, -z), dim=-1) / norm_sq.unsqueeze(-1)
